@@ -1,0 +1,49 @@
+name: Provera artikla
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Samo pošalji test notifikaciju"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: write   # potrebno da workflow može sam sebe da ugasi kad artikal bude dostupan
+
+jobs:
+  provera:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests
+
+      - name: Proveri artikal
+        env:
+          ARTIKAL_URL: ${{ secrets.ARTIKAL_URL }}
+          TEKST_DOSTUPNO: ${{ secrets.TEKST_DOSTUPNO }}
+          TEKST_NEDOSTUPNO: ${{ secrets.TEKST_NEDOSTUPNO }}
+          NTFY_TEMA: ${{ secrets.NTFY_TEMA }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TEST_NOTIFIKACIJA: ${{ inputs.test }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          python provera.py
+          rc=$?
+          if [ "$rc" -eq 10 ]; then
+            echo "Artikal dostupan - gasim workflow da ne šalje ponovo."
+            gh workflow disable provera.yml --repo "${{ github.repository }}"
+            exit 0
+          fi
+          exit "$rc"
